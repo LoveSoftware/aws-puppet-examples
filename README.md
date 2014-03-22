@@ -19,14 +19,13 @@ These examples have been tested using:
 
 2) Install Virtual Box - https://www.virtualbox.org/wiki/Downloads
 
-3) After installing the above download the tutorials vagrant Base Box
- - 
-
-4) Install the base box
- - 
+3) Install the base box
+ - vagrant box add awsbase https://www.dropbox.com/s/p5n53yu85j75mwj/awspuppetbase.box
 
 The base box has ubuntu 12.10 and puppet installed. It is the base 
-installation used to carry out the steps bellow.  
+installation used to carry out the steps bellow. If you are interested in building
+your own base box check out the excellent tool created by Patrick Debois called
+Veewee - https://github.com/jedi4ever/veewee.
 
 ## Creating A Local Puppet Development Environment
 
@@ -47,7 +46,9 @@ debug information to the console.
 
 4) cd /vagrant
 
-5) puppet master -t 
+5) puppet master --no-daemonize --debug --config=puppet.conf
+ - Run puppet in the foreground with debug output
+ - Uses config from the codebase rather than looking in the users homedir 
 
 
 ### Creating A VM From Puppet
@@ -55,10 +56,10 @@ debug information to the console.
 Vagrant allows us to easily create and tear down VM's. Once a VM is created
 we can provision it against the local puppet master created above. 
 If an error occurs we can address it in the puppet master code and tear down 
-the VMand start again fresh.
+the VM and start again fresh.
 
 This is important becuase in the cloud environment puppet must run once, cleanly
-without any adminidstrator intervention. 
+without any administrator intervention. 
 
 1) cd puppet-agent
 
@@ -66,17 +67,28 @@ without any adminidstrator intervention.
 
 3) vagrant ssh
 
-4) sudo puppet agent -t --certname [ROLENAME].[ATTEMPT-NUMBER]
- - eg: sudo puppet agent -t --certname webserver.44
+4) sudo puppet agent --config=/vagrant/puppet.conf -t --certname [ROLENAME].[ATTEMPT-NUMBER]
+ - eg: sudo puppet agent --config=/vagrant/puppet.conf -t --certname webserver.44
 
-Command (4) runs puppet master in test mode provising useful 
-debugging output to the console. 
+Command (4) runs puppet master in test mode, using the config file in /vagrant providing useful 
+debugging output to the console.
 
 - ROLENAME: This should match the name of a node manifest eg - Webserver
 
 - ATTEMPT-NUMBER: Puppet generates an SSL certificate for each "certname"
 it recieves and caches it. Incrementing this number everytime we create a 
 box means we don't have to clear certificates on the master each time. 
+
+Note: The puppet.conf file on master takes care of some simple config including 
+node and module paths, hostname of the master and the location of the master
+on the agent. 
+
+### Webserver
+
+The above steps created a webserver by running the 'webserver' node manifest on the VM 
+we created when we vagrant up'ed. You can check this by adding '192.168.50.103 test.webserver.dev'
+to your hosts file and navigate to test.weserver.dev in your browser. This is just 
+a simple example, your node manifests will likley be much more complex! 
 
 ## Creating An AMI Build Environment On AWS
 
@@ -125,6 +137,7 @@ as the basis for our other AMI's.
 6) Select an ubuntu 12.10 EBS backed instance
  - You can find the name of the AMI to search for from the Canonical site http://cloud-images.ubuntu.com/locator/ec2/
  - AMI ID's vary from region to region. Make sure you select the correct region and the 'ebs' instance type.
+ - In eu-west-1 the ami for ubuntu 12.10 (ebs backed) is ami-67629010
 
 7) Select 't1.micro' and click 'Next: Configure Instance Details'
 
@@ -160,12 +173,7 @@ as the basis for our other AMI's.
 16) Run the "provision.sh" script
  - eg: sudo ./provision.sh
 
-17) Add the following to the /etc/hosts file:
-````
-10.0.1.100 puppet 
-````
-
-18) In the AWS managment console right click on the instance and select 'Create Image'
+17) In the AWS managment console right click on the instance and select 'Create Image'
 
 19) Give the image an appropriate name.
  - I like to use semantic versioning. 
@@ -206,7 +214,7 @@ In this section we use the Base AMI to create a puppet master for the AMI build 
 
 7) Unlike the previous section we need to specify a particular private IP address
 for our puppet master (as it was hardcoded into the hosts file in the previous step).
-- In the "Network Interfaces" section add the "Primary IP": 10.0.0.100.
+- In the "Network Interfaces" section add the "Primary IP": 10.0.1.100.
 
 7) Click "Next: Add Storage", "Next: Tag Instance", "Next: Configure Security Group"
 
@@ -215,16 +223,16 @@ for our puppet master (as it was hardcoded into the hosts file in the previous s
 9) Click review and launch.
 
 10) SCP the puppet-master folder to the new instance
- - eg: scp -i /path/to/key.pem puppet-master ubuntu@[INSTANCE-IP]:~
+ - eg: scp -r -i /path/to/key.pem puppet-master ubuntu@[INSTANCE-IP]:~
  - In your actual deployment you can automate the deployment of changes to your puppet folder
 
 11) SSH into the new instance
  - eg: ssh -i /path/to/key.pem ubuntu@[INSTANCE-IP]
 
 12) Start the puppet master
- - eg: puppet master
+ - eg: puppet master --config=/home/ubuntu/puppet-master/puppet-ec2.conf
  - This starts the puppet master deamon, when you logout puppet will continue to run
- - In your real deployment you may want to run puppet under supervice 
+ - In your real deployment you may want to run puppet under supervise 
 
 ## Using Puppet In A Prod Environment
 
@@ -282,7 +290,14 @@ the ID of a finished AMI at the end of the process.
 Hopefully I'll find some time in the coming weeks to open source this work. However
 the instructions above can form the basis of your own automation efforts.   
 
-## Cloud Formation: Whats it doing? 
+## Cloud Formation: Whats is it doing? 
 
+Cloud formation sets up the following resources:
+
+1. VPC - A private network address space which instances are launched into
+2. A subnet - An address space within your VPC to launch instances into
+3. An Internet gateway - A gateway to allow your instances to communicate outside the VPC
+4. A routing table - to route traffic from your subnet to the internet gateway.
+5. A security group - controlls access to instances when they are launched into it. 
 
 ## Notes HA Puppet & DNS Set up

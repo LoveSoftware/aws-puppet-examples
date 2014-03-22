@@ -1,10 +1,8 @@
 node 'webserver' {
 
-    package { "php5"
-	ensure => installed
-    }
+	class { "nginx": }
 
-    package { "nginx":
-	ensure => installed
-
+	nginx::resource::vhost { 'test.webserver.dev':
+ 	  www_root => '/vagrant/www',
+	}
 }
